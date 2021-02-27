@@ -11,6 +11,11 @@ struct EmojiArtDocumentView: View {
     @ObservedObject var document: EmojiArtDocument
     @State private var chosenPalette: String = ""
     
+    init(document: EmojiArtDocument) {
+        self.document = document
+        _chosenPalette = State(wrappedValue: self.document.defaultPalette)
+    }
+    
     var body: some View {
         VStack {
             HStack {
@@ -66,9 +71,38 @@ struct EmojiArtDocumentView: View {
                     location = CGPoint(x: location.x / self.zoomScale, y: location.y / self.zoomScale)
                     return self.drop(providers: providers, at: location)
                 }
+                .navigationBarItems(trailing: Button(action: {
+                    if let url = UIPasteboard.general.url, url != self.document.backgroundURL {
+                        self.document.backgroundURL = url
+                        self.confirmBackgroundPaste = true
+                    } else {
+                        self.explainBackgroundPaste = true
+                    }
+                }, label: {
+                    Image(systemName: "doc.on.clipboard").imageScale(.large)
+                        .alert(isPresented: self.$explainBackgroundPaste, content: {
+                            return Alert(title: Text("Paste Background")
+                                         , message: Text("Copy the URL of an image to the clip board and touch this button to make it the background of your document.")
+                                         , dismissButton: .default(Text("OK")))
+                        })
+                }))
             }
+            .zIndex(-1)
         }
+        .alert(isPresented: self.$confirmBackgroundPaste, content: {
+            return Alert(title: Text("Paste Background"),
+                         message: Text("Replace your background with \(UIPasteboard.general.url?.absoluteString ?? "nothing")?."),
+                         primaryButton: .default(Text("OK")) {
+                            self.document.backgroundURL = UIPasteboard.general.url
+                         },
+                         secondaryButton: .cancel()
+                  )
+        })
+        
     }
+    
+    @State private var explainBackgroundPaste = false
+    @State private var confirmBackgroundPaste = false
     
     var isLoading: Bool {
         document.backgroundURL != nil && document.backgroundImage == nil
@@ -76,7 +110,6 @@ struct EmojiArtDocumentView: View {
     
     
     
-    @State private var steadyStateZoomScale: CGFloat = 1.0
     @GestureState private var gestureZoomScale: CGFloat = 1.0
     
     private func zoomGesture() -> some Gesture {
@@ -86,19 +119,18 @@ struct EmojiArtDocumentView: View {
                 
             }
             .onEnded { finalGestureScale in
-                self.steadyStateZoomScale *= finalGestureScale
+                self.document.steadyStateZoomScale *= finalGestureScale
             }
     }
     
     private var zoomScale: CGFloat {
-        steadyStateZoomScale * gestureZoomScale
+        document.steadyStateZoomScale * gestureZoomScale
     }
     
-    @State private var steadyStatePanOffSet: CGSize = .zero
     @GestureState private var gesturePanOffSet: CGSize = .zero
     
     private var panOffset: CGSize {
-        (steadyStatePanOffSet + gesturePanOffSet) * zoomScale
+        (document.steadyStatePanOffSet + gesturePanOffSet) * zoomScale
     }
     
     private func panGesture() -> some Gesture {
@@ -108,7 +140,7 @@ struct EmojiArtDocumentView: View {
                 
             }
             .onEnded { finalDragGestureValue in
-                self.steadyStatePanOffSet = steadyStatePanOffSet + (finalDragGestureValue.translation / self.zoomScale)
+                self.document.steadyStatePanOffSet = document.steadyStatePanOffSet + (finalDragGestureValue.translation / self.zoomScale)
             }
     }
     
@@ -126,11 +158,11 @@ struct EmojiArtDocumentView: View {
     }
     
     private func zoomToFit(_ image: UIImage?, in size: CGSize) {
-        if let image = image, image.size.width > 0, image.size.height > 0 {
+        if let image = image, image.size.width > 0, image.size.height > 0, size.width > 0, size.height > 0 {
             let hZoom = size.width / image.size.width
             let vZoom = size.height / image.size.height
-            self.steadyStatePanOffSet = .zero
-            self.steadyStateZoomScale = min(hZoom, vZoom)
+            self.document.steadyStatePanOffSet = .zero
+            self.document.steadyStateZoomScale = min(hZoom, vZoom)
         }
     }
     
